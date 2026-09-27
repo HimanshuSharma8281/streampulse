@@ -84,7 +84,7 @@ CREATE TRIGGER trigger_payments_updated_at
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 
--- Matches Policies
+-- Matches Policies (Public read, Server / Admin mutations)
 DROP POLICY IF EXISTS "Public can view all matches" ON matches;
 CREATE POLICY "Public can view all matches"
     ON matches FOR SELECT
@@ -92,17 +92,18 @@ CREATE POLICY "Public can view all matches"
 
 DROP POLICY IF EXISTS "Admins can insert matches" ON matches;
 CREATE POLICY "Admins can insert matches"
-    ON matches FOR INSERT TO authenticated
+    ON matches FOR INSERT
     WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Admins can update matches" ON matches;
 CREATE POLICY "Admins can update matches"
-    ON matches FOR UPDATE TO authenticated
-    USING (true) WITH CHECK (true);
+    ON matches FOR UPDATE
+    USING (true)
+    WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Admins can delete matches" ON matches;
 CREATE POLICY "Admins can delete matches"
-    ON matches FOR DELETE TO authenticated
+    ON matches FOR DELETE
     USING (true);
 
 -- Payments Policies

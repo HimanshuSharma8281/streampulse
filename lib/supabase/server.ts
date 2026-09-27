@@ -1,25 +1,35 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
-export function isServerSupabaseConfigured(): boolean {
+export function isSupabaseConfigured(): boolean {
   return Boolean(
     supabaseUrl &&
-    supabaseAnonKey &&
+    (supabaseServiceRoleKey || supabaseAnonKey) &&
     supabaseUrl.startsWith('http') &&
     !supabaseUrl.includes('your-project')
   );
 }
 
-export function createServerSupabaseClient(): SupabaseClient | null {
-  if (!isServerSupabaseConfigured()) {
+/**
+ * Creates a server-side Supabase client.
+ * Prioritizes SUPABASE_SERVICE_ROLE_KEY to bypass RLS for administrative mutations,
+ * with fallback to NEXT_PUBLIC_SUPABASE_ANON_KEY.
+ */
+export function getSupabaseServerClient(): SupabaseClient | null {
+  if (!isSupabaseConfigured()) {
     return null;
   }
 
-  return createClient(supabaseUrl!, supabaseAnonKey!, {
+  const key = supabaseServiceRoleKey || supabaseAnonKey;
+  if (!key) return null;
+
+  return createClient(supabaseUrl!, key, {
     auth: {
       persistSession: false,
+      autoRefreshToken: false,
     },
   });
 }

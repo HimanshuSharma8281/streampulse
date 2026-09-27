@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [isMockData, setIsMockData] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
 
   // Form State for Create / Edit
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -223,14 +224,21 @@ export default function AdminPage() {
 
   // Handle Delete Match
   const handleDeleteMatch = async (id: string, teams: string) => {
-    if (window.confirm(`Are you sure you want to delete match "${teams}"?`)) {
+    try {
       const res = await deleteMatch(id);
       if (res.success) {
-        showToast(`Match "${teams}" deleted.`);
-        loadMatches();
+        setMatches((prev) => prev.filter((m) => m.id !== id));
+        setDeletingMatchId(null);
+        showToast(`Match "${teams}" deleted successfully.`);
+        await loadMatches();
       } else {
         showToast(res.error || 'Failed to delete match.', 'error');
+        setDeletingMatchId(null);
       }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error deleting match';
+      showToast(msg, 'error');
+      setDeletingMatchId(null);
     }
   };
 
@@ -436,12 +444,15 @@ export default function AdminPage() {
             {/* Notification / Database Status */}
             {isMockData && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-950/40 p-4 text-xs text-amber-200 flex items-center justify-between gap-4">
-                <span>
-                  <strong>Supabase Notice:</strong> Changes in preview mode persist in current memory. Configure <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in <code>.env.local</code> to persist to PostgreSQL.
-                </span>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Database Notice:</strong> Currently running in local JSON storage mode. Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> (or <code>SUPABASE_SERVICE_ROLE_KEY</code>) to persist directly to your Supabase PostgreSQL database.
+                  </span>
+                </div>
                 <button
                   onClick={loadMatches}
-                  className="shrink-0 flex items-center gap-1 rounded bg-amber-500/20 px-2.5 py-1 text-amber-300 hover:bg-amber-500/30"
+                  className="shrink-0 flex items-center gap-1 rounded bg-amber-500/20 px-2.5 py-1 text-amber-300 hover:bg-amber-500/30 cursor-pointer"
                 >
                   <RefreshCw className="h-3 w-3" /> Refresh
                 </button>
@@ -607,25 +618,45 @@ export default function AdminPage() {
                           {/* Action Buttons */}
                           <td className="px-5 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleOpenEditForm(match)}
-                                className="p-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors"
-                                title="Edit Match"
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleDeleteMatch(
-                                    match.id,
-                                    `${match.home_team} vs ${match.away_team}`
-                                  )
-                                }
-                                className="p-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 hover:border-red-500 hover:text-red-400 transition-colors"
-                                title="Delete Match"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              {deletingMatchId === match.id ? (
+                                <div className="flex items-center gap-1.5 animate-in fade-in">
+                                  <button
+                                    onClick={() =>
+                                      handleDeleteMatch(
+                                        match.id,
+                                        `${match.home_team} vs ${match.away_team}`
+                                      )
+                                    }
+                                    className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-500 shadow-md transition-all cursor-pointer"
+                                    title="Confirm Delete"
+                                  >
+                                    Confirm Delete
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingMatchId(null)}
+                                    className="px-2 py-1 rounded-lg bg-slate-800 text-slate-400 text-[11px] hover:text-white transition-all cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenEditForm(match)}
+                                    className="p-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors cursor-pointer"
+                                    title="Edit Match"
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingMatchId(match.id)}
+                                    className="p-2 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 hover:border-red-500 hover:text-red-400 transition-colors cursor-pointer"
+                                    title="Delete Match"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>

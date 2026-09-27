@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Match } from '@/types/match';
-import { getSupabaseClient, isSupabaseConfigured } from './supabase/client';
+import { getSupabaseServerClient } from './supabase/server';
 import { INITIAL_SAMPLE_MATCHES } from './sampleData';
 
 const dataFilePath = path.join(process.cwd(), 'data', 'matches.json');
@@ -22,8 +22,8 @@ export function readLocalMatches(): Match[] {
 }
 
 export async function getServerMatchById(id: string): Promise<Match | null> {
-  const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured()) {
+  const supabase = getSupabaseServerClient();
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('matches')

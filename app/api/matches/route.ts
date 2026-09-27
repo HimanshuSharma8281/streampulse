@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { Match, MatchFormData } from '@/types/match';
-import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { INITIAL_SAMPLE_MATCHES } from '@/lib/sampleData';
 import { sanitizeRedirectUrl, validateMatchInput } from '@/lib/validation';
 
@@ -33,25 +33,46 @@ function writeLocalData(matches: Match[]) {
 }
 
 export async function GET() {
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseServerClient();
 
-  if (supabase && isSupabaseConfigured()) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('matches')
         .select('*')
         .order('match_date', { ascending: true });
 
-      if (!error && data) {
-        return NextResponse.json({ matches: data, isMock: false });
+      if (error) {
+        console.error('[DATABASE] Supabase GET /api/matches error:', error.message);
+        return NextResponse.json({ error: error.message, matches: [] }, { status: 500 });
       }
+
+      const sorted = (data as Match[]).sort((a, b) => {
+        const order = { LIVE: 0, UPCOMING: 1, ENDED: 2 };
+        return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+      });
+
+      return NextResponse.json({ matches: sorted, isMock: false });
     } catch (err) {
-      console.error('Supabase query error:', err);
+      console.error('[DATABASE] Supabase fetch exception:', err);
+      return NextResponse.json({ error: 'Database connection failed', matches: [] }, { status: 500 });
     }
   }
 
-  const matches = readLocalData();
-  return NextResponse.json({ matches, isMock: true });
+  // Development fallback when Supabase is not configured
+  if (process.env.NODE_ENV === 'development') {
+    const matches = readLocalData();
+    return NextResponse.json({ matches, isMock: true });
+  }
+
+  return NextResponse.json(
+    {
+      error: 'Supabase is not configured in production. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY.',
+      matches: [],
+      isMock: false,
+    },
+    { status: 500 }
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -75,11 +96,11 @@ export async function POST(request: NextRequest) {
       status: body.status,
       watch_url: sanitizedWatchUrl,
       access_type: body.access_type || 'FREE',
-      price_inr: body.price_inr || 0,
+      price_inr: body.access_type === 'PAID' ? (Number(body.price_inr) || 5) : 0,
     };
 
-    const supabase = getSupabaseClient();
-    if (supabase && isSupabaseConfigured()) {
+    const supabase = getSupabaseServerClient();
+    if (supabase) {
       const { data, error } = await supabase
         .from('matches')
         .insert([newMatchPayload])
@@ -87,25 +108,34 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error('[DATABASE] Supabase create match error:', error.message);
+        return NextResponse.json({ error: `Supabase error: ${error.message}` }, { status: 500 });
       }
-      return NextResponse.json({ match: data });
+      return NextResponse.json({ match: data, success: true });
     }
 
-    // Local file persistence
-    const matches = readLocalData();
-    const newMatch: Match = {
-      ...newMatchPayload,
-      id: 'm-' + Date.now(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    matches.unshift(newMatch);
-    writeLocalData(matches);
+    // Local file persistence (development fallback)
+    if (process.env.NODE_ENV === 'development') {
+      const matches = readLocalData();
+      const newMatch: Match = {
+        ...newMatchPayload,
+        id: 'm-' + Date.now(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      matches.unshift(newMatch);
+      writeLocalData(matches);
 
-    return NextResponse.json({ match: newMatch });
+      return NextResponse.json({ match: newMatch, success: true });
+    }
+
+    return NextResponse.json(
+      { error: 'Supabase database configuration missing in production.' },
+      { status: 500 }
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to create match';
+    console.error('[DATABASE] Match creation exception:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

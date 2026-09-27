@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { Match, MatchFormData } from '@/types/match';
-import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { INITIAL_SAMPLE_MATCHES } from '@/lib/sampleData';
 import { sanitizeRedirectUrl } from '@/lib/validation';
 
@@ -38,13 +38,17 @@ export async function PUT(
 ) {
   const { id } = await params;
   try {
+    if (!id) {
+      return NextResponse.json({ error: 'Match ID is required.' }, { status: 400 });
+    }
+
     const body = (await request.json()) as Partial<MatchFormData>;
     if (body.watch_url) {
       body.watch_url = sanitizeRedirectUrl(body.watch_url);
     }
 
-    const supabase = getSupabaseClient();
-    if (supabase && isSupabaseConfigured()) {
+    const supabase = getSupabaseServerClient();
+    if (supabase) {
       const { data, error } = await supabase
         .from('matches')
         .update({
@@ -56,29 +60,43 @@ export async function PUT(
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error(`[DATABASE] Supabase update error for match ${id}:`, error.message);
+        return NextResponse.json({ error: `Supabase error: ${error.message}` }, { status: 500 });
       }
-      return NextResponse.json({ match: data });
+
+      if (!data) {
+        return NextResponse.json({ error: 'Match not found in database.' }, { status: 404 });
+      }
+
+      return NextResponse.json({ match: data, success: true });
     }
 
-    // Local file persistence
-    const matches = readLocalData();
-    const index = matches.findIndex((m) => m.id === id);
-    if (index === -1) {
-      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    // Local file persistence (development fallback)
+    if (process.env.NODE_ENV === 'development') {
+      const matches = readLocalData();
+      const index = matches.findIndex((m) => m.id === id);
+      if (index === -1) {
+        return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+      }
+
+      const updatedMatch: Match = {
+        ...matches[index],
+        ...body,
+        updated_at: new Date().toISOString(),
+      };
+      matches[index] = updatedMatch;
+      writeLocalData(matches);
+
+      return NextResponse.json({ match: updatedMatch, success: true });
     }
 
-    const updatedMatch: Match = {
-      ...matches[index],
-      ...body,
-      updated_at: new Date().toISOString(),
-    };
-    matches[index] = updatedMatch;
-    writeLocalData(matches);
-
-    return NextResponse.json({ match: updatedMatch });
+    return NextResponse.json(
+      { error: 'Supabase database configuration missing in production.' },
+      { status: 500 }
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to update match';
+    console.error(`[DATABASE] Match update exception:`, msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
@@ -89,23 +107,50 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    const supabase = getSupabaseClient();
-    if (supabase && isSupabaseConfigured()) {
-      const { error } = await supabase.from('matches').delete().eq('id', id);
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-      return NextResponse.json({ success: true });
+    if (!id) {
+      return NextResponse.json({ error: 'Match ID is required.' }, { status: 400 });
     }
 
-    // Local file persistence
-    let matches = readLocalData();
-    matches = matches.filter((m) => m.id !== id);
-    writeLocalData(matches);
+    console.log(`[DATABASE] Executing DELETE for match id: "${id}"`);
 
-    return NextResponse.json({ success: true });
+    const supabase = getSupabaseServerClient();
+    if (supabase) {
+      // Equivalent to: supabase.from('matches').delete().eq('id', id)
+      const { error, count } = await supabase
+        .from('matches')
+        .delete({ count: 'exact' })
+        .eq('id', id);
+
+      if (error) {
+        console.error(`[DATABASE] Supabase deletion failed for match ${id}:`, error.message);
+        return NextResponse.json(
+          { error: `Supabase deletion failed: ${error.message}` },
+          { status: 500 }
+        );
+      }
+
+      console.log(`[DATABASE] Supabase match ${id} deleted successfully. Count:`, count);
+      return NextResponse.json({ success: true, count });
+    }
+
+    // Local file persistence (development fallback)
+    if (process.env.NODE_ENV === 'development') {
+      let matches = readLocalData();
+      const initialCount = matches.length;
+      matches = matches.filter((m) => m.id !== id);
+      writeLocalData(matches);
+
+      console.log(`[DATABASE] Local file match ${id} deleted. (Remaining: ${matches.length})`);
+      return NextResponse.json({ success: true, count: initialCount - matches.length });
+    }
+
+    return NextResponse.json(
+      { error: 'Supabase database configuration missing in production.' },
+      { status: 500 }
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to delete match';
+    console.error(`[DATABASE] Match deletion exception:`, msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

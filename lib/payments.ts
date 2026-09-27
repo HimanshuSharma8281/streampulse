@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { PaymentRecord, PaymentStatus } from '@/types/payment';
-import { getSupabaseClient, isSupabaseConfigured } from './supabase/client';
+import { getSupabaseServerClient } from './supabase/server';
 
 const paymentsFilePath = path.join(process.cwd(), 'data', 'payments.json');
 const ACCESS_SECRET = process.env.RAZORPAY_KEY_SECRET || process.env.ADMIN_PASSWORD || 'streampulse_secure_access_secret_key';
@@ -58,8 +58,8 @@ export async function recordPayment(payment: {
     updated_at: new Date().toISOString(),
   };
 
-  const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured()) {
+  const supabase = getSupabaseServerClient();
+  if (supabase) {
     try {
       await supabase.from('payments').insert([newRecord]);
     } catch (err) {
@@ -90,8 +90,8 @@ export async function hasPaidAccess(
 
   // 2. Check by guest session ID
   if (guestSessionId) {
-    const supabase = getSupabaseClient();
-    if (supabase && isSupabaseConfigured()) {
+    const supabase = getSupabaseServerClient();
+    if (supabase) {
       try {
         const { data, error } = await supabase
           .from('payments')
