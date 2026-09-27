@@ -1,21 +1,5 @@
 [
   {
-    "home_team": "Chelsea",
-    "away_team": "Tottenham",
-    "home_logo": "",
-    "away_logo": "",
-    "competition": "Premier League (Capital Derby)",
-    "match_date": "2026-09-27",
-    "match_time": "19:45 GMT",
-    "status": "LIVE",
-    "watch_url": "https://example.com/chelsea-vs-tottenham",
-    "access_type": "FREE",
-    "price_inr": 0,
-    "id": "m-1790523111615",
-    "created_at": "2026-09-27T15:31:51.615Z",
-    "updated_at": "2026-09-27T15:33:36.602Z"
-  },
-  {
     "id": "m-1",
     "home_team": "Manchester City",
     "away_team": "Arsenal",
